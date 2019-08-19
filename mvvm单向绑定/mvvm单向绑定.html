@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>MVVM单向绑定</title>
+</head>
+<body>
+	<div id="app">{{name}}'s age : {{age}}</div>
+
+<script type="text/javascript">
+	function observe(data) {
+		  if(!data || typeof data !== 'object') return
+		  for(var key in data) {
+		    let val = data[key]
+		    let subject = new Subject()
+		    Object.defineProperty(data, key, {
+		      enumerable: true,
+		      configurable: true,
+		      get: function() {
+		        console.log(`get ${key}: ${val}`)
+		        if(currentObserver){
+		          console.log('hages currentObserver')
+		          currentObserver.subscribeTo(subject)
+		        }
+		        return val
+		      },
+		      set: function(newVal) {
+		        val = newVal
+		        console.log('start notify...')
+		        subject.notify()
+		      }
+		    })
+		    if(typeof val === 'object'){
+		      observe(val)
+		    }
+		  }
+	}
+	let id = 0;
+	let currentObserver = null;
+	/*主题实例化*/
+	class Subject {
+		constructor() {
+			this.id = id++;
+			this.observers = [];
+		}
+		addObserver(observer){
+			this.observers.push(observer);
+		}
+		removeObserver(observer) {
+			var index = this.observers.indexOf(observer);
+			if(index > -1) {
+				this.observers.splice(index, 1);
+			}
+		}
+		notify() {
+			this.observers.forEach(observer => {
+				observer.update();
+			})
+		}
+	}
+	/*观察者构造函数*/
+	class Observer{
+		constructor(vm, key, cb){
+			this.subjects = {};
+			this.vm = vm;
+			this.key = key;
+			this.cb = cb;
+			this.value = this.getValue();
+		}
+		/*如果主题改变，观察者的value也跟着变*/
+		update(){
+			let oldVal = this.value;
+			let value  = this.getValue();
+			if(value !== oldVal){
+				this.value = value;
+				this.cb.bind(this.vm)(value,oldVal);
+			}
+		}
+		/*订阅主题*/
+		subscribeTo(subject) {
+			if(!this.subjects[subject.id]){
+				console.log("subscribeTo...", subject);
+				subject.addObserver(this);
+				this.subjects[subject.id] = subject;
+			}
+		}
+		getValue() {
+			currentObserver = this;
+			let value = this.vm.$data[this.key]
+			currentObserver = null;
+			return value;
+		}
+	}
+	class mvvm {
+		constructor(opts) {
+			this.init(opts);
+			observe(this.$data);
+			this.compile();
+		}
+		init(opts){
+			this.$el = document.querySelector(opts.el);
+			this.$data = opts.data;
+			this.observers = [];
+		}
+		compile(){
+			this.traverse(this.$el);
+		}
+		traverse(node){
+			/* 如果是元素节点，那么遍历它下面的节点 */
+			if(node.nodeType === 1){
+				node.childNodes.forEach(childNode => {
+					this.traverse(childNode);
+				})
+			}else if(node.nodeType === 3){
+				this.renderText(node);/*如果是文本节点，渲染出来*/
+			}	
+		}
+		/*这个是正则实现啥，看不懂*/
+		renderText(node){
+			let reg = /{{(.+?)}}/g;
+			let match;
+			while(match = reg.exec(node.nodeValue)){
+				let raw = match[0]
+				let key = match[1].trim()
+				node.nodeValue = node.nodeValue.replace(raw, this.$data[key])
+				new Observer(this, key, function (val, oldVal) {
+					node.nodeValue = node.nodeValue.replace(oldVal, val)
+				})
+			}
+		}
+	}
+
+	let vm = new mvvm({
+		el: '#app',
+		data: {
+			name: 'lalala',
+			age: 3
+		}
+	})
+	setInterval(function () {
+		vm.$data.age++;
+	}, 1000)
+</script>
+</body>
+</html>
